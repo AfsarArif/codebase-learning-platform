@@ -1,0 +1,35 @@
+{
+  "name": "codebase-learning-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A platform that analyzes codebases and turns them into interactive learning experiences",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @codebase-learning/web",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "format": "prettier --write .",
+    "clean": "turbo run clean",
+    "db:migrate": "cd packages/shared && npm run db:migrate",
+    "db:seed": "cd packages/shared && npm run db:seed",
+    "setup": "npm install && npm run db:migrate && npm run db:seed",
+    "index-sample-repo": "cd apps/worker && npm run index-sample"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.0",
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0"
+  },
+  "packageManager": "npm@11.17.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "Apache-2.0",
+  "dependencies": {
+    "ioredis": "^5.11.1"
+  }
+}

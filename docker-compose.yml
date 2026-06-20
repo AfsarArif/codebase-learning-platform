@@ -1,0 +1,92 @@
+version: "3.9"
+
+services:
+  # ─── PostgreSQL (primary DB + vector store) ────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: cbl-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: codebase_learning
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis (cache + session + queue) ────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cbl-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Web App (Next.js) ──────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.web
+    container_name: cbl-web
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL_DOCKER}
+      - REDIS_URL=${REDIS_URL_DOCKER}
+      - VECTOR_DB_URL=${VECTOR_DB_URL_DOCKER}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ─── Worker (Python Celery) ────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.worker
+    container_name: cbl-worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL_DOCKER}
+      - REDIS_URL=${REDIS_URL_DOCKER}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL_DOCKER}
+      - VECTOR_DB_URL=${VECTOR_DB_URL_DOCKER}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - SNAPSHOT_DIR=/app/snapshots
+    volumes:
+      - snapshot_data:/app/snapshots
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  snapshot_data:

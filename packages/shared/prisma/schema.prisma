@@ -1,0 +1,407 @@
+// Codebase Learning Platform - Prisma Schema
+// Based on the data model defined in clp.md
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User & Auth ─────────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  avatarUrl     String?  @map("avatar_url")
+  authProvider  String   @default("github") @map("auth_provider")
+  githubUserId  Int?     @unique @map("github_user_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  githubConnections GitHubConnection[]
+  repositories      Repository[]       @relation("CreatedRepos")
+  tutorThreads      TutorThread[]
+  interviews        Interview[]
+  userProgress      UserProgress[]
+  conceptMetrics    ConceptMasteryMetric[]
+  personalBots      PersonalBot[]
+  interviewResponses InterviewResponse[]
+
+  @@map("users")
+}
+
+model GitHubConnection {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  providerType    String   @default("oauth") @map("provider_type") // oauth | github_app
+  githubUserId    Int      @map("github_user_id")
+  accessToken     String   @map("access_token_encrypted") // encrypted at rest
+  refreshToken    String?  @map("refresh_token_encrypted")
+  installationId  Int?     @map("installation_id") // GitHub App installation
+  scopes          String[]
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("github_connections")
+}
+
+// ─── Repositories ────────────────────────────────────────────────────────────
+
+model Repository {
+  id               String   @id @default(cuid())
+  owner            String
+  name             String
+  fullName         String   @unique @map("full_name")
+  sourceType       String   @default("public_url") @map("source_type") // github_connected | public_url
+  githubRepoId     Int?     @map("github_repo_id")
+  defaultBranch    String   @default("main") @map("default_branch")
+  currentCommitSha String?  @map("current_commit_sha")
+  visibility       String   @default("public") // public | private
+  cloneUrl         String?  @map("clone_url_or_api_url")
+  description      String?
+  language         String?
+  topics           String[]
+  createdByUserId  String?  @map("created_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  createdBy      User?                 @relation("CreatedRepos", fields: [createdByUserId], references: [id])
+  snapshots      RepositorySnapshot[]
+  tutorThreads   TutorThread[]
+  interviews     Interview[]
+  bots           PersonalBot[]
+  userProgress   UserProgress[]
+  conceptMetrics ConceptMasteryMetric[]
+
+  @@index([fullName])
+  @@index([createdByUserId])
+  @@map("repositories")
+}
+
+model RepositorySnapshot {
+  id            String   @id @default(cuid())
+  repositoryId  String   @map("repository_id")
+  commitSha     String   @map("commit_sha")
+  branch        String   @default("main")
+  archivePath   String?  @map("archive_path")
+  manifestJson  Json?    @map("manifest_json")
+  indexedStatus String   @default("pending") @map("indexed_status") // pending | indexing | completed | failed
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  files      File[]
+  concepts   Concept[]
+  lessons    Lesson[]
+  flashcards Flashcard[]
+  quizzes    Quiz[]
+
+  @@index([repositoryId, commitSha])
+  @@map("repository_snapshots")
+}
+
+// ─── Code Analysis ───────────────────────────────────────────────────────────
+
+model File {
+  id              String   @id @default(cuid())
+  snapshotId      String   @map("snapshot_id")
+  path            String
+  language        String?
+  sizeBytes       Int      @map("size_bytes")
+  hash            String
+  summary         String?
+  isIgnored       Boolean  @default(false) @map("is_ignored")
+  rawStoragePath  String?  @map("raw_storage_path")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  snapshot RepositorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  symbols  Symbol[]
+
+  @@index([snapshotId, path])
+  @@map("files")
+}
+
+model Symbol {
+  id         String @id @default(cuid())
+  fileId     String @map("file_id")
+  name       String
+  symbolType String @map("symbol_type") // function | class | interface | export | import | route | decorator
+  signature  String?
+  startLine  Int    @map("start_line")
+  endLine    Int    @map("end_line")
+  summary    String?
+
+  file File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([name, symbolType])
+  @@map("symbols")
+}
+
+// ─── Concepts & Learning Graph ───────────────────────────────────────────────
+
+model Concept {
+  id          String   @id @default(cuid())
+  snapshotId  String   @map("snapshot_id")
+  name        String
+  conceptType String   @map("concept_type") // module | feature | pattern | flow | architectural_component
+  description String
+  difficulty  String   @default("beginner") // beginner | intermediate | advanced
+  tags        String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  snapshot       RepositorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  fromRelations  ConceptRelation[]  @relation("FromConcept")
+  toRelations    ConceptRelation[]  @relation("ToConcept")
+  flashcards     Flashcard[]
+  lessons        Lesson[]
+  interviewQuestions InterviewQuestion[]
+
+  @@index([snapshotId])
+  @@map("concepts")
+}
+
+model ConceptRelation {
+  id             String @id @default(cuid())
+  fromConceptId  String @map("from_concept_id")
+  toConceptId    String @map("to_concept_id")
+  relationType   String @map("relation_type") // depends_on | contains | uses | precedes | relates_to
+
+  fromConcept Concept @relation("FromConcept", fields: [fromConceptId], references: [id], onDelete: Cascade)
+  toConcept   Concept @relation("ToConcept", fields: [toConceptId], references: [id], onDelete: Cascade)
+
+  @@unique([fromConceptId, toConceptId, relationType])
+  @@map("concept_relations")
+}
+
+// ─── Lessons ─────────────────────────────────────────────────────────────────
+
+model Lesson {
+  id                   String   @id @default(cuid())
+  snapshotId           String   @map("snapshot_id")
+  conceptId            String?  @map("concept_id")
+  title                String
+  description          String
+  orderIndex           Int      @map("order_index")
+  difficulty           String   @default("beginner")
+  estimatedMinutes     Int      @map("estimated_minutes")
+  lessonContentMarkdown String  @map("lesson_content_markdown")
+  track                String?  // newcomer | frontend | backend | fullstack | testing | deployment | interview
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  snapshot  RepositorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  concept   Concept?           @relation(fields: [conceptId], references: [id])
+  resources LessonResource[]
+  progress  UserProgress[]
+
+  @@index([snapshotId, orderIndex])
+  @@map("lessons")
+}
+
+model LessonResource {
+  id           String @id @default(cuid())
+  lessonId     String @map("lesson_id")
+  resourceType String @map("resource_type") // file | symbol | concept | url | diagram
+  resourceRef  String @map("resource_ref")
+  displayTitle String @map("display_title")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@map("lesson_resources")
+}
+
+// ─── Study Materials ─────────────────────────────────────────────────────────
+
+model Flashcard {
+  id         String   @id @default(cuid())
+  snapshotId String   @map("snapshot_id")
+  lessonId   String?  @map("lesson_id")
+  conceptId  String?  @map("concept_id")
+  frontText  String   @map("front_text")
+  backText   String   @map("back_text")
+  tags       String[] @default([])
+  difficulty String   @default("beginner")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  snapshot RepositorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  concept  Concept?           @relation(fields: [conceptId], references: [id])
+
+  @@index([snapshotId])
+  @@map("flashcards")
+}
+
+model Quiz {
+  id          String   @id @default(cuid())
+  snapshotId  String   @map("snapshot_id")
+  lessonId    String?  @map("lesson_id")
+  title       String
+  quizType    String   @map("quiz_type") // multiple_choice | short_answer | true_false | ordering | matching
+  payloadJson Json     @map("payload_json") // question data including options, correct answers, explanations
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  snapshot RepositorySnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotId])
+  @@map("quizzes")
+}
+
+// ─── Tutor Chat ──────────────────────────────────────────────────────────────
+
+model TutorThread {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  repositoryId String   @map("repository_id")
+  title        String   @default("New Chat")
+  mode         String   @default("explain") // explain | quiz | interview | beginner | advanced
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository     @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  messages   TutorMessage[]
+
+  @@index([userId, repositoryId])
+  @@map("tutor_threads")
+}
+
+model TutorMessage {
+  id           String   @id @default(cuid())
+  threadId     String   @map("thread_id")
+  role         String   // user | assistant | system
+  content      String
+  citationsJson Json?   @map("citations_json") // [{file, symbol, lineStart, lineEnd, relevance}]
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  thread TutorThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("tutor_messages")
+}
+
+// ─── Interview Engine ────────────────────────────────────────────────────────
+
+model Interview {
+  id               String   @id @default(cuid())
+  repositoryId     String   @map("repository_id")
+  userId           String   @map("user_id")
+  mode             String   // conceptual | implementation | debug | system_design
+  difficultyProfile String  @default("intermediate") @map("difficulty_profile") // beginner | intermediate | advanced | mixed
+  focusAreas       String[] @default([]) @map("focus_areas_json") // api, database, frontend, backend, testing, etc.
+  status           String   @default("in_progress") // in_progress | completed | abandoned
+  currentQuestionIndex Int @default(0) @map("current_question_index")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  repository Repository          @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questions  InterviewQuestion[]
+
+  @@index([userId, repositoryId])
+  @@map("interviews")
+}
+
+model InterviewQuestion {
+  id             String   @id @default(cuid())
+  interviewId    String   @map("interview_id")
+  conceptId      String?  @map("concept_id")
+  questionType   String   @map("question_type") // basic | intermediate | advanced | framework_specific
+  promptText     String   @map("prompt_text")
+  referenceAnswer String  @map("reference_answer")
+  difficulty     String   @default("intermediate")
+  tags           String[] @default([])
+  sourceFiles    String[] @default([]) @map("source_files_json")
+  orderIndex     Int      @map("order_index")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  interview  Interview          @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  concept    Concept?           @relation(fields: [conceptId], references: [id])
+  responses  InterviewResponse[]
+
+  @@index([interviewId, orderIndex])
+  @@map("interview_questions")
+}
+
+model InterviewResponse {
+  id                  String   @id @default(cuid())
+  interviewQuestionId String   @map("interview_question_id")
+  userId              String   @map("user_id")
+  answerText          String   @map("answer_text")
+  score               Float?
+  feedbackText        String?  @map("feedback_text")
+  rubricJson          Json?    @map("rubric_json") // scoring rubric used
+  evaluatedAt         DateTime? @map("evaluated_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  question InterviewQuestion @relation(fields: [interviewQuestionId], references: [id], onDelete: Cascade)
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([interviewQuestionId])
+  @@index([userId])
+  @@map("interview_responses")
+}
+
+// ─── Progress & Personalization ──────────────────────────────────────────────
+
+model UserProgress {
+  id             String    @id @default(cuid())
+  userId         String    @map("user_id")
+  repositoryId   String    @map("repository_id")
+  conceptId      String?   @map("concept_id")
+  lessonId       String?   @map("lesson_id")
+  status         String    @default("not_started") // not_started | in_progress | completed | mastered
+  masteryScore   Float     @default(0) @map("mastery_score")
+  lastReviewedAt DateTime? @map("last_reviewed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  lesson     Lesson?    @relation(fields: [lessonId], references: [id])
+
+  @@unique([userId, repositoryId, conceptId])
+  @@unique([userId, repositoryId, lessonId])
+  @@map("user_progress")
+}
+
+model ConceptMasteryMetric {
+  id                   String   @id @default(cuid())
+  userId               String   @map("user_id")
+  repositoryId         String   @map("repository_id")
+  conceptId            String   @map("concept_id")
+  lastInterviewScore   Float?   @map("last_interview_score")
+  averageInterviewScore Float?  @map("average_interview_score")
+  attempts             Int      @default(0)
+  lastAssessedAt       DateTime? @map("last_assessed_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, repositoryId, conceptId])
+  @@map("concept_mastery_metrics")
+}
+
+// ─── Personal Bot ────────────────────────────────────────────────────────────
+
+model PersonalBot {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  repositoryId    String   @map("repository_id")
+  name            String   @default("Code Tutor")
+  personaConfig   Json     @default("{}") @map("persona_config_json")
+  memoryConfig    Json     @default("{}") @map("memory_config_json")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, repositoryId])
+  @@map("personal_bots")
+}
