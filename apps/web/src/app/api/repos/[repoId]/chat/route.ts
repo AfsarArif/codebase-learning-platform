@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { chatRequestSchema } from '@codebase-learning/shared';
+import { chatRequestSchema, prisma } from '@codebase-learning/shared';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
 
 export async function POST(
   request: NextRequest,
@@ -29,6 +33,25 @@ export async function POST(
 
     const mockThreadId = threadId ?? `thread_${Date.now()}`;
 
+    // Try to get graph context for token-efficient answers
+    let graphContext: string | null = null;
+    try {
+      const repo = await prisma.repository.findUnique({
+        where: { id: repoId },
+        include: { snapshots: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      });
+      const gPath = repo?.snapshots[0]?.graphJsonPath;
+      if (gPath) {
+        const { stdout } = await execAsync(
+          `graphify query "${message.replace(/"/g, '\\"')}" --budget 2000 --graph "${gPath}"`,
+          { timeout: 10000 },
+        );
+        graphContext = stdout.trim();
+      }
+    } catch {
+      // graph unavailable — fall through
+    }
+
     return NextResponse.json({
       success: true,
       threadId: mockThreadId,
@@ -40,6 +63,7 @@ export async function POST(
         citationsJson: [],
         createdAt: new Date().toISOString(),
       },
+      graphContext,
       suggestedFollowups: [
         'What is the overall architecture?',
         'How does the data flow work?',

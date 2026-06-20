@@ -1,47 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { ArrowRight, Github, Loader2 } from 'lucide-react';
+import { useRepoImport } from '@/hooks/useRepoImport';
 
 export default function ReposPage() {
-  const router = useRouter();
-  const [url, setUrl] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleImport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-
-    if (!url.trim()) {
-      setError('Please enter a GitHub repository URL');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const response = await fetch('/api/repos/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to import repository');
-      }
-
-      if (data.repoId) {
-        router.push(`/dashboard/${data.repoId}`);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { url, setUrl, loading, error, handleImport } = useRepoImport();
 
   return (
     <div className="max-w-2xl mx-auto">

@@ -1,11 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GitHubUrlParser, GitHubApiClient } from '@codebase-learning/github';
-import { prisma, dispatchCeleryTask } from '@codebase-learning/shared';
+import { prisma, importRepoUrlSchema } from '@codebase-learning/shared';
+import { rateLimit } from '@/lib/rate-limiter';
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting: 10 imports per minute per IP
+    const ip = request.headers.get('x-forwarded-for') ?? request.headers.get('x-real-ip') ?? 'unknown';
+    const { allowed, remaining, resetAt } = rateLimit({
+      key: `import:${ip}`,
+      limit: 10,
+      windowMs: 60_000,
+    });
+
+    if (!allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Too many requests. Please try again later.' },
+        {
+          status: 429,
+          headers: { 'Retry-After': String(Math.ceil((resetAt - Date.now()) / 1000)) },
+        },
+      );
+    }
+
     const body = await request.json();
-    const { url, branch } = body;
+
+    // Zod validation
+    const validationResult = importRepoUrlSchema.safeParse(body);
+    if (!validationResult.success) {
+      return NextResponse.json(
+        { success: false, error: validationResult.error.issues[0]?.message ?? 'Invalid request body' },
+        { status: 400 },
+      );
+    }
+    const { url, branch } = validationResult.data;
 
     if (!url) {
       return NextResponse.json(
@@ -92,15 +120,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Dispatch Celery indexing task (fire-and-forget)
-    const cloneUrl = GitHubUrlParser.buildCloneUrl(owner, repo);
-    dispatchCeleryTask({
-      task: 'src.tasks.indexing.index_repository',
-      args: [repository.id, cloneUrl, owner, repo, targetBranch, 'public_url'],
-      kwargs: { snapshot_id: snapshot.id },
-    }).catch((err) => {
-      console.error('Failed to dispatch Celery task:', err);
-    });
+    // Snapshot is created with indexedStatus="pending"
+    // The DB-polling worker (polling_worker.py) will pick it up automatically
+    console.log(`[import] Snapshot created: ${snapshot.id} for ${fullName} (status: pending)`);
+    console.log(`[import] Polling worker will detect and process within ~${5}s`);
 
     return NextResponse.json({
       success: true,

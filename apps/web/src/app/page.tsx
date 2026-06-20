@@ -1,5 +1,8 @@
+'use client';
+
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Brain, Code2, FileSearch, Gamepad2, MessageSquare, Zap } from 'lucide-react';
+import { ArrowRight, BookOpen, Brain, Code2, FileSearch, Gamepad2, Loader2, MessageSquare, Zap } from 'lucide-react';
+import { useRepoImport } from '@/hooks/useRepoImport';
 
 const features = [
   {
@@ -35,6 +38,7 @@ const features = [
 ];
 
 export default function HomePage() {
+  const { url, setUrl, loading, error, handleImport } = useRepoImport();
   return (
     <div>
       {/* Hero */}
@@ -51,23 +55,36 @@ export default function HomePage() {
         </p>
 
         {/* URL Input */}
-        <div className="max-w-xl mx-auto flex gap-3">
-          <input
-            type="url"
-            placeholder="https://github.com/owner/repo"
-            className="flex-1 px-4 py-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <Link
-            href="/repos"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
-          >
-            Start Learning
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-        <p className="text-sm text-muted-foreground mt-3">
-          No sign-in required for public repositories
-        </p>
+        <form onSubmit={handleImport} className="max-w-xl mx-auto">
+          <div className="flex gap-3">
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+              className="flex-1 px-4 py-3 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowRight className="h-4 w-4" />
+              )}
+              {loading ? 'Importing...' : 'Start Learning'}
+            </button>
+          </div>
+          {error && (
+            <p className="text-sm text-destructive mt-3">{error}</p>
+          )}
+          <p className="text-sm text-muted-foreground mt-3">
+            No sign-in required for public repositories
+          </p>
+        </form>
       </section>
 
       {/* Features Grid */}

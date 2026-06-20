@@ -8,6 +8,7 @@ import {
   Brain,
   FileCode,
   Gamepad2,
+  GitBranch,
   Loader2,
   MessageSquare,
   RefreshCw,
@@ -218,6 +219,7 @@ export default function RepoDashboardPage({
             { icon: FileCode, title: 'Quizzes', desc: 'Coming soon...', color: 'text-orange-600' },
             { icon: Trophy, title: 'Interview Mode', desc: 'Coming soon...', color: 'text-red-600' },
             { icon: Gamepad2, title: 'Mini-Games', desc: 'Coming soon...', color: 'text-teal-600' },
+            { icon: GitBranch, title: 'Dependency Graph', desc: 'Coming soon...', color: 'text-indigo-600' },
           ].map((mod) => (
             <div key={mod.title} className="p-6 rounded-lg border bg-card">
               <mod.icon className={`h-8 w-8 ${mod.color} mb-4`} />
@@ -315,6 +317,13 @@ export default function RepoDashboardPage({
       title: 'Mini-Games',
       description: 'Learn by playing',
       color: 'text-teal-600',
+    },
+    {
+      href: `/dashboard/${params.repoId}/graph`,
+      icon: GitBranch,
+      title: 'Dependency Graph',
+      description: 'Interactive code structure visualization',
+      color: 'text-indigo-600',
     },
   ];
 

@@ -33,6 +33,9 @@ class WorkerConfig:
     anthropic_api_key: str | None = field(
         default_factory=lambda: os.getenv("ANTHROPIC_API_KEY")
     )
+    deepseek_api_key: str | None = field(
+        default_factory=lambda: os.getenv("DEEPSEEK_API_KEY")
+    )
 
     # Embedding Provider
     embedding_provider: str = field(

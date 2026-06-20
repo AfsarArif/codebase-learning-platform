@@ -22,7 +22,17 @@ model User {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
+  // Auth + billing
+  passwordHash        String?   @map("password_hash")
+  tier                String    @default("free") @map("tier")
+  credits             Int       @default(3) @map("credits")
+  emailVerifiedAt     DateTime? @map("email_verified_at")
+  stripeCustomerId    String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId String?  @map("stripe_subscription_id")
+  subscriptionStatus  String?   @map("subscription_status")
+
   githubConnections GitHubConnection[]
+  usageRecords      UsageRecord[]
   repositories      Repository[]       @relation("CreatedRepos")
   tutorThreads      TutorThread[]
   interviews        Interview[]
@@ -50,6 +60,38 @@ model GitHubConnection {
 
   @@index([userId])
   @@map("github_connections")
+}
+
+// ─── User Settings ──────────────────────────────────────────────────────────
+
+model UserSettings {
+  id               String   @id @default(cuid())
+  userId           String   @unique @map("user_id")
+  llmProvider      String   @default("anthropic") @map("llm_provider")
+  openaiApiKey     String?  @map("openai_api_key_encrypted")
+  anthropicApiKey  String?  @map("anthropic_api_key_encrypted")
+  deepseekApiKey   String?  @map("deepseek_api_key_encrypted")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("user_settings")
+}
+
+// ─── Usage Tracking ─────────────────────────────────────────────────────────
+
+model UsageRecord {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  action      String   // repo_import | chat_message | interview_session | reindex
+  creditsUsed Int      @default(1) @map("credits_used")
+  usedOwnKey  Boolean  @default(false) @map("used_own_key")
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("usage_records")
 }
 
 // ─── Repositories ────────────────────────────────────────────────────────────
@@ -93,6 +135,7 @@ model RepositorySnapshot {
   archivePath   String?  @map("archive_path")
   manifestJson  Json?    @map("manifest_json")
   indexedStatus String   @default("pending") @map("indexed_status") // pending | indexing | completed | failed
+  graphJsonPath  String?  @map("graph_json_path")
   createdAt     DateTime @default(now()) @map("created_at")
 
   repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)

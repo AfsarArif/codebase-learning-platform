@@ -20,6 +20,7 @@
     "index-sample-repo": "cd apps/worker && npm run index-sample"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "prettier": "^3.3.0",
     "turbo": "^2.0.0",
     "typescript": "^5.4.0"
@@ -30,6 +31,8 @@
   },
   "license": "Apache-2.0",
   "dependencies": {
-    "ioredis": "^5.11.1"
+    "bcryptjs": "^3.0.3",
+    "ioredis": "^5.11.1",
+    "stripe": "^22.2.2"
   }
 }

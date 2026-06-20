@@ -79,7 +79,7 @@ async function main() {
         repositoryId: created.id,
         commitSha: 'abc123def456',
         branch: repo.defaultBranch,
-        indexedStatus: 'completed',
+        indexedStatus: 'pending',
         manifestJson: { files: 100, languages: { [repo.language.toLowerCase()]: 80 } },
       },
     });

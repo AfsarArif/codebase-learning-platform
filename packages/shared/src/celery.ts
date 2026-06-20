@@ -12,7 +12,10 @@ export async function dispatchCeleryTask(
   message: CeleryTaskMessage,
   redisUrl?: string,
 ): Promise<string> {
-  const redis = new Redis(redisUrl ?? process.env.REDIS_URL ?? 'redis://localhost:6379');
+  // Use CELERY_BROKER_URL first (Celery queue), fall back to REDIS_URL (cache)
+  const url = redisUrl ?? process.env.CELERY_BROKER_URL ?? process.env.REDIS_URL ?? 'redis://localhost:6379/0';
+  console.log('[dispatchCeleryTask] connecting to', url);
+  const redis = new Redis(url);
 
   const taskId = crypto.randomUUID();
   const body = JSON.stringify(message.args);
